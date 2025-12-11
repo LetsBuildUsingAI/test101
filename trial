@@ -20,3 +20,65 @@ echo -n '"$@0"' > payload2.txt
 curl -X POST http://localhost:3000 -H "Next-Action: dontcare" \
     -F "0=<payload.json" -F '1=<payload2.txt' \
     --max-time 2 2>/dev/null || true
+
+
+index=endpoint OR index=sysmon OR index=windows
+(
+    (ParentImage="*powershell.exe" OR ParentImage="*cmd.exe" OR ParentImage="*pwsh.exe")
+    AND (CommandLine="*curl*" OR CommandLine="*Invoke-WebRequest*" OR CommandLine="*Invoke-RestMethod*")
+)
+AND (
+    "__proto__" OR "constructor:constructor" OR "child_process" OR "execSync" OR "NEXT_REDIRECT"
+)
+| table _time, host, user, ParentImage, CommandLine, dest_ip, dest_port
+
+
+
+index=endpoint_network*
+dest_port=80 OR dest_port=443
+method=POST
+"Next-Action"
+"multipart/form-data"
+("__proto__" OR "constructor:constructor")
+| table _time, src, dest, uri, process_name, command_line
+
+
+index=web OR index=api_gateway OR index=nginx OR index=apache
+method=POST
+"multipart/form-data"
+"Next-Action"
+("__proto__" OR "constructor:constructor")
+("child_process" OR "execSync" OR "process.mainModule")
+| table _time, src, dest, uri, http_user_agent, status
+
+
+index=web*
+method=POST
+"multipart/form-data"
+"Next-Action"
+"__proto__"
+"constructor:constructor"
+"process.mainModule"
+"child_process"
+"execSync"
+"NEXT_REDIRECT"
+| table _time, src, uri, http_user_agent, status
+
+
+
+(
+  index=endpoint OR index=sysmon
+  (CommandLine="*curl*" OR CommandLine="*Invoke-WebRequest*" OR CommandLine="*Invoke-RestMethod*")
+)
+OR
+(
+  index=web*
+  method=POST
+)
+AND (
+  "__proto__" OR "constructor:constructor"
+)
+AND (
+  "child_process" OR "execSync" OR "process.mainModule"
+)
+| stats count values(src) values(host) by uri
